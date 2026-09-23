@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Voix — lecteur de texte</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+
+    --bg: #12141c;
+    --surface: #1b1e2a;
+    --surface-raised: #232739;
+    --border: #2c3040;
+    --text-primary: #ede9e1;
+    --text-muted: #8a8f9e;
+    --accent: #e3a94f;
+    --accent-dim: #7a6338;
+    --wave: #4fb8a6;
+    --danger: #d9705f;
+  }
+  :root:not([data-theme="light"]) { color-scheme: dark; }
+  :root[data-theme="light"] {
+    --bg: #f6f4ee;
+    --surface: #ffffff;
+    --surface-raised: #ffffff;
+    --border: #ded8c8;
+    --text-primary: #1c1a15;
+    --text-muted: #6b6559;
+    --accent: #b9762a;
+    --accent-dim: #e6cea3;
+    --wave: #2f8f7d;
+    --danger: #b7412f;
+    color-scheme: light;
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .topbar {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 28px clamp(18px, 5vw, 56px) 10px;
+    gap: 16px;
+  }
+  .brand {
+    font-family: 'Fraunces', serif;
+    font-optical-sizing: auto;
+    font-weight: 600;
+    font-size: clamp(22px, 3.4vw, 30px);
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+  .brand span { color: var(--accent); }
+  .theme-toggle {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .theme-toggle:hover { color: var(--text-primary); border-color: var(--text-muted); }
+
+  main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 10px clamp(18px, 5vw, 56px) 0;
+    max-width: 900px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  .page {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: clamp(20px, 4vw, 40px);
+    margin-bottom: 20px;
+    min-height: 280px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .page-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 14px;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  #editor {
+    flex: 1;
+    outline: none;
+    font-size: clamp(17px, 2.2vw, 20px);
+    line-height: 1.75;
+    max-width: 68ch;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  #editor:empty::before {
+    content: attr(data-placeholder);
+    color: var(--text-muted);
+  }
+  #editor.locked { user-select: none; }
+
+  .word { transition: background 0.08s ease, color 0.08s ease; border-radius: 3px; }
+  .word.active {
+    background: var(--accent);
+    color: #16130a;
+  }
+  :root[data-theme="light"] .word.active { color: #fffaf0; }
+
+  .controls {
+    position: sticky;
+    bottom: env(safe-area-inset-bottom, 0px);
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 10px 14px;
+    margin-bottom: max(18px, env(safe-area-inset-bottom, 0px));
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.25);
+  }
+
+  .transport { display: flex; align-items: center; gap: 6px; }
+
+  .play-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: var(--accent);
+    color: #16130a;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .play-btn:disabled { opacity: 0.4; cursor: default; }
+  .icon-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-primary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .icon-btn:disabled { opacity: 0.3; cursor: default; }
+  .icon-btn:not(:disabled):hover, .play-btn:not(:disabled):hover { filter: brightness(1.1); }
+
+  .wave {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 20px;
+    padding: 0 4px;
+    width: 30px;
+  }
+  .wave span {
+    width: 3px;
+    background: var(--wave);
+    border-radius: 2px;
+    height: 6px;
+  }
+  .wave.playing span { animation: bounce 0.9s ease-in-out infinite; }
+  .wave span:nth-child(1) { animation-delay: 0s; }
+  .wave span:nth-child(2) { animation-delay: 0.15s; }
+  .wave span:nth-child(3) { animation-delay: 0.3s; }
+  .wave span:nth-child(4) { animation-delay: 0.45s; }
+  @keyframes bounce {
+    0%, 100% { height: 5px; }
+    50% { height: 18px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .wave.playing span { animation: none; height: 12px; }
+  }
+
+  .divider { width: 1px; height: 26px; background: var(--border); flex-shrink: 0; }
+
+  select, .speed-wrap {
+    background: transparent;
+    color: var(--text-primary);
+    border: none;
+    font-family: inherit;
+    font-size: 13px;
+  }
+  select {
+    max-width: 140px;
+    cursor: pointer;
+  }
+  select:focus-visible, .icon-btn:focus-visible, .play-btn:focus-visible, .theme-toggle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .speed-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-muted);
+  }
+  .speed-wrap input[type="range"] {
+    width: 70px;
+    accent-color: var(--accent);
+  }
+  .speed-val { width: 30px; color: var(--text-primary); }
+
+  .hint {
+    padding: 4px clamp(18px, 5vw, 56px) 0;
+    font-size: 12px;
+    color: var(--text-muted);
+    max-width: 900px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .unsupported {
+    padding: 16px clamp(18px, 5vw, 56px) 40px;
+    color: var(--danger);
+    max-width: 900px;
+    margin: 0 auto;
+    width: 100%;
+    font-size: 14px;
+  }
+
+  @media (max-width: 480px) {
+    .controls { padding: 8px 10px; gap: 8px; border-radius: 20px; }
+    select { max-width: 90px; }
+    .speed-wrap input[type="range"] { width: 50px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <p class="brand">Voix<span>.</span></p>
+  <button class="theme-toggle" id="themeToggle" type="button">Mode clair</button>
+</div>
+
+<main>
+  <div class="page">
+    <div class="page-label">
+      <span id="statusLabel">Collez ou écrivez votre texte</span>
+      <span id="wordCount">0 mot</span>
+    </div>
+    <div id="editor" contenteditable="true" data-placeholder="Le texte que vous écrivez ici sera lu à voix haute…"></div>
+  </div>
+
+  <div class="controls">
+    <div class="transport">
+      <button class="play-btn" id="playBtn" type="button" aria-label="Lire">
+        <svg id="playIcon" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 1.8v12.4c0 .8.9 1.3 1.6.9l10-6.2c.6-.4.6-1.4 0-1.8l-10-6.2C3.9.5 3 1 3 1.8z" fill="currentColor"/></svg>
+        <svg id="pauseIcon" width="16" height="16" viewBox="0 0 16 16" fill="none" style="display:none"><rect x="3" y="2" width="4" height="12" rx="1" fill="currentColor"/><rect x="9" y="2" width="4" height="12" rx="1" fill="currentColor"/></svg>
+      </button>
+      <button class="icon-btn" id="stopBtn" type="button" aria-label="Arrêter" disabled>
+        <svg width="12" height="12" viewBox="0 0 12 12"><rect width="12" height="12" rx="2" fill="currentColor"/></svg>
+      </button>
+    </div>
+
+    <div class="wave" id="wave"><span></span><span></span><span></span><span></span></div>
+
+    <div class="divider"></div>
+
+    <select id="voiceSelect" aria-label="Choisir une voix"></select>
+
+    <div class="divider"></div>
+
+    <div class="speed-wrap">
+      <span>Vitesse</span>
+      <input type="range" id="speedRange" min="0.5" max="2" step="0.1" value="1">
+      <span class="speed-val" id="speedVal">1×</span>
+    </div>
+  </div>
+</main>
+
+<p class="hint">Le surlignage suit la lecture mot par mot. Le texte n'est pas modifiable pendant la lecture.</p>
+<p class="unsupported" id="unsupportedMsg" style="display:none">
+  Votre navigateur ne prend pas en charge la synthèse vocale (Web Speech API). Essayez avec Chrome, Edge ou Safari récents.
+</p>
+
+<script>
+(function () {
+  const editor = document.getElementById('editor');
+  const playBtn = document.getElementById('playBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const playIcon = document.getElementById('playIcon');
+  const pauseIcon = document.getElementById('pauseIcon');
+  const wave = document.getElementById('wave');
+  const voiceSelect = document.getElementById('voiceSelect');
+  const speedRange = document.getElementById('speedRange');
+  const speedVal = document.getElementById('speedVal');
+  const statusLabel = document.getElementById('statusLabel');
+  const wordCount = document.getElementById('wordCount');
+  const themeToggle = document.getElementById('themeToggle');
+  const unsupportedMsg = document.getElementById('unsupportedMsg');
+
+  // Theme toggle (per-viewer convenience only, no shared state)
+  themeToggle.addEventListener('click', () => {
+    const root = document.documentElement;
+    const isLight = root.getAttribute('data-theme') === 'light';
+    root.setAttribute('data-theme', isLight ? 'dark' : 'light');
+    themeToggle.textContent = isLight ? 'Mode clair' : 'Mode sombre';
+    try { localStorage.setItem('voix-theme', isLight ? 'dark' : 'light'); } catch (e) {}
+  });
+  try {
+    const saved = localStorage.getItem('voix-theme');
+    if (saved === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+      themeToggle.textContent = 'Mode sombre';
+    }
+  } catch (e) {}
+
+  if (!('speechSynthesis' in window)) {
+    unsupportedMsg.style.display = 'block';
+    playBtn.disabled = true;
+    return;
+  }
+
+  let voices = [];
+  let utterance = null;
+  let state = 'idle'; // idle | playing | paused
+  let wordSpans = [];
+  let currentActive = null;
+
+  function populateVoices() {
+    voices = speechSynthesis.getVoices().sort((a, b) => a.lang.localeCompare(b.lang));
+    if (!voices.length) return;
+    const prevValue = voiceSelect.value;
+    voiceSelect.innerHTML = '';
+    voices.forEach((v, i) => {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = `${v.name} — ${v.lang}`;
+      voiceSelect.appendChild(opt);
+    });
+    // prefer a French voice by default
+    const frIndex = voices.findIndex(v => v.lang.toLowerCase().startsWith('fr'));
+    if (prevValue && voices[prevValue]) {
+      voiceSelect.value = prevValue;
+    } else if (frIndex >= 0) {
+      voiceSelect.value = frIndex;
+    }
+  }
+  populateVoices();
+  if (speechSynthesis.onvoiceschanged !== undefined) {
+    speechSynthesis.onvoiceschanged = populateVoices;
+  }
+
+  speedRange.addEventListener('input', () => {
+    speedVal.textContent = parseFloat(speedRange.value).toFixed(1) + '×';
+  });
+
+  editor.addEventListener('input', () => {
+    const text = editor.innerText.trim();
+    const words = text.length ? text.split(/\s+/).length : 0;
+    wordCount.textContent = words + (words === 1 ? ' mot' : ' mots');
+  });
+
+  function wrapWords(text) {
+    // returns {html, ranges: [{start,end}]} using \S+ matches on original text
+    const ranges = [];
+    let html = '';
+    let lastIndex = 0;
+    const re = /\S+/g;
+    let m;
+    let idx = 0;
+    while ((m = re.exec(text)) !== null) {
+      const before = text.slice(lastIndex, m.index);
+      html += escapeHtml(before);
+      html += `<span class="word" data-i="${idx}">${escapeHtml(m[0])}</span>`;
+      ranges.push({ start: m.index, end: m.index + m[0].length });
+      lastIndex = m.index + m[0].length;
+      idx++;
+    }
+    html += escapeHtml(text.slice(lastIndex));
+    return { html, ranges };
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function setState(next) {
+    state = next;
+    if (next === 'playing') {
+      playIcon.style.display = 'none';
+      pauseIcon.style.display = '';
+      playBtn.setAttribute('aria-label', 'Mettre en pause');
+      stopBtn.disabled = false;
+      wave.classList.add('playing');
+      statusLabel.textContent = 'Lecture en cours…';
+    } else if (next === 'paused') {
+      playIcon.style.display = '';
+      pauseIcon.style.display = 'none';
+      playBtn.setAttribute('aria-label', 'Reprendre');
+      stopBtn.disabled = false;
+      wave.classList.remove('playing');
+      statusLabel.textContent = 'En pause';
+    } else {
+      playIcon.style.display = '';
+      pauseIcon.style.display = 'none';
+      playBtn.setAttribute('aria-label', 'Lire');
+      stopBtn.disabled = true;
+      wave.classList.remove('playing');
+      statusLabel.textContent = 'Collez ou écrivez votre texte';
+    }
+  }
+
+  function clearHighlight() {
+    if (currentActive) {
+      currentActive.classList.remove('active');
+      currentActive = null;
+    }
+  }
+
+  function restoreEditable(plainText) {
+    editor.contentEditable = 'true';
+    editor.classList.remove('locked');
+    editor.innerText = plainText;
+  }
+
+  function startReading() {
+    const text = editor.innerText;
+    if (!text.trim()) return;
+
+    const { html, ranges } = wrapWords(text);
+    editor.innerHTML = html;
+    editor.contentEditable = 'false';
+    editor.classList.add('locked');
+    wordSpans = Array.from(editor.querySelectorAll('.word'));
+
+    utterance = new SpeechSynthesisUtterance(text);
+    const voice = voices[voiceSelect.value];
+    if (voice) {
+      utterance.voice = voice;
+      utterance.lang = voice.lang;
+    }
+    utterance.rate = parseFloat(speedRange.value);
+
+    utterance.onboundary = (e) => {
+      if (e.name && e.name !== 'word') return;
+      const charIndex = e.charIndex;
+      let found = null;
+      for (let i = 0; i < ranges.length; i++) {
+        if (charIndex >= ranges[i].start && charIndex < ranges[i].end) { found = i; break; }
+        if (charIndex < ranges[i].start) { found = i; break; }
+      }
+      if (found !== null && wordSpans[found]) {
+        clearHighlight();
+        wordSpans[found].classList.add('active');
+        currentActive = wordSpans[found];
+        wordSpans[found].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    };
+
+    utterance.onend = () => {
+      clearHighlight();
+      restoreEditable(text);
+      setState('idle');
+    };
+
+    utterance.onerror = () => {
+      clearHighlight();
+      restoreEditable(text);
+      setState('idle');
+    };
+
+    speechSynthesis.cancel();
+    speechSynthesis.speak(utterance);
+    setState('playing');
+  }
+
+  playBtn.addEventListener('click', () => {
+    if (state === 'idle') {
+      startReading();
+    } else if (state === 'playing') {
+      speechSynthesis.pause();
+      setState('paused');
+    } else if (state === 'paused') {
+      speechSynthesis.resume();
+      setState('playing');
+    }
+  });
+
+  stopBtn.addEventListener('click', () => {
+    const text = editor.innerText;
+    speechSynthesis.cancel();
+    clearHighlight();
+    restoreEditable(text);
+    setState('idle');
+  });
+})();
+</script>
+
+</body>
+</html>
